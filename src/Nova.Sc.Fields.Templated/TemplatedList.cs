@@ -14,6 +14,10 @@ using System.Collections.Specialized;
 using System.IO;
 using Sitecore.Web.UI.Sheer;
 using Sitecore.Shell.Applications.ContentEditor;
+using Sitecore.Resources;
+using Sitecore.Reflection;
+using Sitecore.Data.Fields;
+using Sitecore.Data.Items;
 
 namespace Nova.Sc.Fields.Templated
 {
@@ -51,6 +55,10 @@ namespace Nova.Sc.Fields.Templated
 
         private void LoadValue()
         {
+            ;
+        }
+        private void LoadValue1()
+        {
             if (!ReadOnly && !Disabled)
             {
                 DataValue valueObject = new DataValue();
@@ -87,7 +95,50 @@ namespace Nova.Sc.Fields.Templated
 
         private void BuildControl()
         {
+            if (!SourceRowTemplate.Any())
+            {
+                return;
+            }
+
+            Table.Table table = new Table.Table();
+            Table.Row header = new Table.Row();
+            Table.Row newRow = new Table.Row();
+            table.AddRow(header);
+            foreach(var field in SourceRowTemplate)
+            {
+                header.AddCell(new Table.Cell(new LiteralControl(HttpUtility.HtmlEncode(field.DisplayName ?? field.Name))));
+
+                System.Web.UI.Control editor = GetEditor(field);
+                SetProperties(editor, GetUniqueID(ID), field);
+
+                newRow.AddCell(new Table.Cell(editor));
+            }
+
+            foreach (var row in ValueObject.items)
+            {
+                Table.Row tableRow = new Table.Row();
+                foreach (var field in SourceRowTemplate)
+                {
+                    System.Web.UI.Control editor = GetEditor(field);
+                    SetProperties(editor, GetUniqueID(ID), field);
+
+                    tableRow.AddCell(new Table.Cell(editor));
+                }
+
+                table.AddRow(tableRow);
+            }
+
+
+
+            table.AddRow(newRow);
+            Controls.Add(table);
+        }
+
+        private void BuildControl1()
+        {
             RowCount = 0;
+
+            //TODO - headers
 
             foreach (var row in ValueObject.items)
             {
@@ -100,20 +151,20 @@ namespace Nova.Sc.Fields.Templated
 
         protected string BuildRow(int rowIndex, IEnumerable<DataItemProperty> properties)
         {
-            var template = GetPropertiesTemplate();
-            if (!template.Any())
+            if (!SourceRowTemplate.Any())
             {
                 return string.Empty;
             }
 
             StringBuilder sb = new StringBuilder();
             sb.Append("<table width=\"100%\" cellpadding=\"4\" cellspacing=\"0\" border=\"0\"><tr>");
-            int width = 100 / template.Count();
+            int width = 100 / SourceRowTemplate.Count();
 
-            foreach (var pair in template)
+            foreach (var propertyField in SourceRowTemplate)
             {
-                string value = properties.Where(p => p.key == pair.Key).Select(p => p.value).FirstOrDefault() ?? string.Empty;
-                string control = BuildPropertyControl(rowIndex, pair.Key, value, pair.Value);
+                string key = propertyField.Name;
+                string value = properties.Where(p => p.key == key).Select(p => p.value).FirstOrDefault() ?? string.Empty;
+                string control = BuildPropertyControl(rowIndex, propertyField, value);
                 sb.AppendFormat("<td width=\"{1}%\">{0}</td>", control, width);
             }
 
@@ -122,18 +173,28 @@ namespace Nova.Sc.Fields.Templated
             return sb.ToString();
         }
 
-        protected string BuildPropertyControl(int rowIndex, string key, string value, string type)
+        protected string BuildPropertyControl(int rowIndex, Item field, string value)
         {
             string uniqueId = GetUniqueID(ID + "_row_" + rowIndex.ToString() + "_");
-            switch (type)
+
+            using (HtmlTextWriter writer = new HtmlTextWriter(new StringWriter()))
             {
-                case "Image":
-                    return BuildImageControl(uniqueId, key, value);
-                case "Single - Line Text":
-                    return BuildSingleLineControl(uniqueId, key, value);
-                default:
-                    return BuildSingleLineControl(uniqueId, key, value);
+                writer.Write(@"<input name=""{0}"" type=""hidden"" value=""{1}"">", uniqueId, field.Name);
+                var editor = GetEditor(field);
+                //SetProperties(editor, field);
+                //TODO
+                return writer.InnerWriter.ToString();
             }
+
+            //switch (type)
+            //{
+            //    case "Image":
+            //        return BuildImageControl(uniqueId, key, value);
+            //    case "Single-Line Text":
+            //        return BuildSingleLineControl(uniqueId, key, value);
+            //    default:
+            //        return BuildSingleLineControl(uniqueId, key, value);
+            //}
             //TODO
         }
 
@@ -157,23 +218,44 @@ namespace Nova.Sc.Fields.Templated
             }
         }
 
-        protected Dictionary<string, string> GetPropertiesTemplate()
+        //protected Dictionary<string, string> GetPropertiesTemplate()
+        //{
+        //    Dictionary<string, string> result = new Dictionary<string, string>();
+        //    result.Add("image", "Image");
+        //    result.Add("title", "Single-Line Text");
+        //    result.Add("blurb", "Single-Line Text");
+
+        //    //Rich Text
+        //    //Multi - Line Text
+        //    //Single - Line Text
+        //    //Image with Cropping
+        //    //Image
+
+        //    //var i = GetItem();
+        //    //i.Template.Fields[0].Type
+        //    //TODO
+        //    return result;
+        //}
+
+        private List<Item> _sourceRowTemplate;
+        protected List<Item> SourceRowTemplate
         {
-            Dictionary<string, string> result = new Dictionary<string, string>();
-            result.Add("image", "Image");
-            result.Add("title", "Single - Line Text");
-            result.Add("blurb", "Single - Line Text");
-
-            //Rich Text
-            //Multi - Line Text
-            //Single - Line Text
-            //Image with Cropping
-            //Image
-
-            //var i = GetItem();
-            //i.Template.Fields[0].Type
-            //TODO
-            return result;
+            get
+            {
+                if(_sourceRowTemplate == null)
+                {
+                    _sourceRowTemplate = new List<Item>();
+                    var source = Sitecore.Context.ContentDatabase.GetItem(Source);
+                    if(source != null)
+                    {
+                        foreach(Item section in source.Children)
+                        {
+                            _sourceRowTemplate.AddRange(section.Children);
+                        }
+                    }
+                }
+                return _sourceRowTemplate;
+            }
         }
 
         protected override void DoRender(HtmlTextWriter output)
@@ -197,6 +279,47 @@ namespace Nova.Sc.Fields.Templated
             }
         }
 
+
+        public System.Web.UI.Control GetEditor(Item field)
+        {
+
+            string fieldType = field["Type"];
+            if (string.IsNullOrEmpty(fieldType))
+            {
+                fieldType = "text";
+            }
+
+            var fieldTypeItem = FieldTypeManager.GetFieldTypeItem(fieldType) ?? FieldTypeManager.GetDefaultFieldTypeItem();
+
+            System.Web.UI.Control control = Resource.GetWebControl(fieldTypeItem["Control"]);
+            if (control == null)
+            {
+                string text = fieldTypeItem["Assembly"];
+                string text2 = fieldTypeItem["Class"];
+                if (!string.IsNullOrEmpty(text) && !string.IsNullOrEmpty(text2))
+                {
+                    control = (ReflectionUtil.CreateObject(text, text2, new object[0]) as System.Web.UI.Control);
+                }
+            }
+            if (control == null)
+            {
+                control = new Text();
+            }
+            return control;
+        }
+
+        public void SetProperties(System.Web.UI.Control editor, string id, Item field) //string fieldId, string fieldSource)
+        {
+            ReflectionUtil.SetProperty(editor, "ID", id); //field.ControlID
+            ReflectionUtil.SetProperty(editor, "ItemID", ItemID);
+            ReflectionUtil.SetProperty(editor, "ItemVersion", ItemVersion);
+            ReflectionUtil.SetProperty(editor, "ItemLanguage", ItemLanguage);
+            ReflectionUtil.SetProperty(editor, "FieldID", field.ID.ToString()); //field.ItemField.ID.ToString()
+            ReflectionUtil.SetProperty(editor, "Source", field["Source"]); //field.ItemField.Source
+            ReflectionUtil.SetProperty(editor, "ReadOnly", ReadOnly);
+            ReflectionUtil.SetProperty(editor, "Disabled", ReadOnly);
+        }
+
         public string Source
         {
             get
@@ -205,8 +328,43 @@ namespace Nova.Sc.Fields.Templated
             }
             set
             {
-                //Assert.ArgumentNotNull(value, "value");
                 SetViewStateString("Source", value);
+            }
+        }
+
+        public string ItemID
+        {
+            get
+            {
+                return GetViewStateString("ItemID");
+            }
+            set
+            {
+                SetViewStateString("ItemID", value);
+            }
+        }
+
+        public string ItemVersion
+        {
+            get
+            {
+                return GetViewStateString("ItemVersion");
+            }
+            set
+            {
+                SetViewStateString("ItemVersion", value);
+            }
+        }
+
+        public string ItemLanguage
+        {
+            get
+            {
+                return GetViewStateString("ItemLanguage");
+            }
+            set
+            {
+                SetViewStateString("ItemLanguage", value);
             }
         }
 

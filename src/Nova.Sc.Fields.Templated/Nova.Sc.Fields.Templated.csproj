@@ -45,6 +45,9 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Table\Cell.cs" />
+    <Compile Include="Table\Row.cs" />
+    <Compile Include="Table\Table.cs" />
     <Compile Include="TemplatedList.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
