@@ -14,9 +14,24 @@ namespace Nova.Sc.Fields.Templated.Table
 
         }
 
-        public Cell(Control innerControl)
+        public Cell(Control innerControl, string cellKey)
         {
             Controls.Add(innerControl);
+            Key = cellKey;
+        }
+
+        public string Key
+        {
+            get
+            {
+                this.TrackViewState();
+                return this.ViewState["cellKey"] as string;
+            }
+            set
+            {
+                this.TrackViewState();
+                this.ViewState["cellKey"] = value;
+            }
         }
 
         protected override void RenderChildren(HtmlTextWriter writer)

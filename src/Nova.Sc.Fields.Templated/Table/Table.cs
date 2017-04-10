@@ -33,5 +33,16 @@ namespace Nova.Sc.Fields.Templated.Table
         {
             Controls.Add(row);
         }
+
+        public IEnumerable<Row> Rows
+        {
+            get
+            {
+                foreach(Row r in Controls)
+                {
+                    yield return r;
+                }
+            }
+        }
     }
 }

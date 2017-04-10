@@ -14,6 +14,20 @@ namespace Nova.Sc.Fields.Templated.Table
 
         }
 
+        public string Key
+        {
+            get
+            {
+                this.TrackViewState();
+                return this.ViewState["rowKey"] as string;
+            }
+            set
+            {
+                this.TrackViewState();
+                this.ViewState["rowKey"] = value;
+            }
+        }
+
         public Row(IEnumerable<Cell> cells)
         {
             foreach (var cell in cells)
@@ -32,6 +46,17 @@ namespace Nova.Sc.Fields.Templated.Table
         public void AddCell(Cell cell)
         {
             Controls.Add(cell);
+        }
+
+        public IEnumerable<Cell> Cells
+        {
+            get
+            {
+                foreach (Cell c in Controls)
+                {
+                    yield return c;
+                }
+            }
         }
     }
 }

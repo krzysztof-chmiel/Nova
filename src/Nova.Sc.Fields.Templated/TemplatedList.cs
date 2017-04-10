@@ -18,6 +18,7 @@ using Sitecore.Resources;
 using Sitecore.Reflection;
 using Sitecore.Data.Fields;
 using Sitecore.Data.Items;
+using Sitecore.Shell.Framework.Commands;
 
 namespace Nova.Sc.Fields.Templated
 {
@@ -55,42 +56,39 @@ namespace Nova.Sc.Fields.Templated
 
         private void LoadValue()
         {
-            ;
-        }
-        private void LoadValue1()
-        {
             if (!ReadOnly && !Disabled)
             {
                 DataValue valueObject = new DataValue();
-                System.Web.UI.Page handler = HttpContext.Current.Handler as System.Web.UI.Page;
-                NameValueCollection form = handler != null ? handler.Request.Form : new NameValueCollection();
-                //ID_row_12_UNID_value
-                string keyStart = ID + "_row_";
-                string valueKeySuffix = "_value";
-                foreach (string id in form.Keys)
+                foreach (Table.Table table in Controls)
                 {
-                    if ((!string.IsNullOrEmpty(id) && id.StartsWith(keyStart)) && !id.EndsWith(valueKeySuffix))
+                    foreach(var row in table.Rows.Where(r => r.Key != "non-data"))
                     {
-                        int row = int.Parse(id.Substring(keyStart.Length, id.Substring(keyStart.Length).IndexOf('_')));
+                        DataItem dataItem = new DataItem();
 
-                        DataItem dataItem = valueObject.items.FirstOrDefault(d => d.row == row);
-                        if (dataItem == null)
+                        foreach(var cell in row.Cells)
                         {
-                            dataItem = new DataItem() { row = row };
-                            valueObject.items.Add(dataItem);
+                            dataItem.properties.Add(new DataItemProperty() { key = cell.Key, value = GetCellValue(cell) });
                         }
-                        dataItem.properties.Add(new DataItemProperty() { key = form[id], value = form[id + valueKeySuffix] });
+                        valueObject.items.Add(dataItem);
                     }
                 }
-
-                //TODO - deleted rows, update item count etc.
-                valueObject.items = valueObject.items.Where(i => i.properties.Any(p => !string.IsNullOrEmpty(p.value))).OrderBy(i => i.row).ToList();
+                //TODO - order
+                valueObject.items = valueObject.items.Where(i => i.properties.Any(p => !string.IsNullOrEmpty(p.value))).ToList();
                 if (Value != valueObject.JsonSerialize())
                 {
                     ValueObject = valueObject;
                     SetModified();
                 }
             }
+        }
+
+        private string GetCellValue(Table.Cell cell)
+        {
+            foreach(System.Web.UI.Control c in cell.Controls)
+            {
+                return GetValue(c);
+            }
+            return null;
         }
 
         private void BuildControl()
@@ -101,141 +99,52 @@ namespace Nova.Sc.Fields.Templated
             }
 
             Table.Table table = new Table.Table();
-            Table.Row header = new Table.Row();
+            Table.Row header = new Table.Row() { Key = "non-data" };
             Table.Row newRow = new Table.Row();
+            Table.Row newRowMenu = new Table.Row() { Key = "non-data" };
             table.AddRow(header);
             foreach(var field in SourceRowTemplate)
             {
-                header.AddCell(new Table.Cell(new LiteralControl(HttpUtility.HtmlEncode(field.DisplayName ?? field.Name))));
+                string editorId = GetUniqueID(ID);
+                Item fieldItemType = GetFieldTypeItem(field);
 
-                System.Web.UI.Control editor = GetEditor(field);
-                SetProperties(editor, GetUniqueID(ID), field);
+                header.AddCell(new Table.Cell(new LiteralControl(HttpUtility.HtmlEncode(field.DisplayName ?? field.Name)), "header"));
 
-                newRow.AddCell(new Table.Cell(editor));
+                System.Web.UI.Control editor = GetEditor(fieldItemType);
+                SetProperties(editor, editorId, field);
+                //TODO - Sitecore.Shell.Applications.ContentEditor.EditorFormatter.SetAttributes
+                //TODO - Sitecore.Shell.Applications.ContentEditor.EditorFormatter.SetStyle
+                
+                newRow.AddCell(new Table.Cell(editor, field.Name));
+                newRowMenu.AddCell(new Table.Cell(GetMenuButtons(fieldItemType, editorId), "non-data"));
             }
 
             foreach (var row in ValueObject.items)
             {
                 Table.Row tableRow = new Table.Row();
+                Table.Row menuRow = new Table.Row() { Key = "non-data" };
                 foreach (var field in SourceRowTemplate)
                 {
-                    System.Web.UI.Control editor = GetEditor(field);
-                    SetProperties(editor, GetUniqueID(ID), field);
+                    string editorId = GetUniqueID(ID);
+                    Item fieldItemType = GetFieldTypeItem(field);
+                    System.Web.UI.Control editor = GetEditor(fieldItemType);
+                    SetProperties(editor, editorId, field);
+                    //TODO - Sitecore.Shell.Applications.ContentEditor.EditorFormatter.SetAttributes
+                    //TODO - Sitecore.Shell.Applications.ContentEditor.EditorFormatter.SetStyle
+                    SetValue(editor, row.properties.Where(p => p.key == field.Name).Select(p => p.value).FirstOrDefault());
+                    tableRow.AddCell(new Table.Cell(editor, field.Name));
 
-                    tableRow.AddCell(new Table.Cell(editor));
+                    menuRow.AddCell(new Table.Cell(GetMenuButtons(fieldItemType, editorId), "non-data"));
                 }
 
+                table.AddRow(menuRow);
                 table.AddRow(tableRow);
             }
 
-
-
+            table.AddRow(newRowMenu);
             table.AddRow(newRow);
             Controls.Add(table);
         }
-
-        private void BuildControl1()
-        {
-            RowCount = 0;
-
-            //TODO - headers
-
-            foreach (var row in ValueObject.items)
-            {
-                Controls.Add(new LiteralControl(BuildRow(RowCount++, row.properties)));
-            }
-            Controls.Add(new LiteralControl(BuildRow(RowCount++, new DataItemProperty[0])));
-            string addRowClientEvent = Sitecore.Context.ClientPage.GetClientEvent(ID + ".AddRow");
-            Controls.Add(new LiteralControl(string.Format(@"<div onclick=""{0}"" id=""{1}"">Add row</div>", addRowClientEvent, ID + "_add")));
-        }
-
-        protected string BuildRow(int rowIndex, IEnumerable<DataItemProperty> properties)
-        {
-            if (!SourceRowTemplate.Any())
-            {
-                return string.Empty;
-            }
-
-            StringBuilder sb = new StringBuilder();
-            sb.Append("<table width=\"100%\" cellpadding=\"4\" cellspacing=\"0\" border=\"0\"><tr>");
-            int width = 100 / SourceRowTemplate.Count();
-
-            foreach (var propertyField in SourceRowTemplate)
-            {
-                string key = propertyField.Name;
-                string value = properties.Where(p => p.key == key).Select(p => p.value).FirstOrDefault() ?? string.Empty;
-                string control = BuildPropertyControl(rowIndex, propertyField, value);
-                sb.AppendFormat("<td width=\"{1}%\">{0}</td>", control, width);
-            }
-
-            sb.Append("</tr></table>");
-
-            return sb.ToString();
-        }
-
-        protected string BuildPropertyControl(int rowIndex, Item field, string value)
-        {
-            string uniqueId = GetUniqueID(ID + "_row_" + rowIndex.ToString() + "_");
-
-            using (HtmlTextWriter writer = new HtmlTextWriter(new StringWriter()))
-            {
-                writer.Write(@"<input name=""{0}"" type=""hidden"" value=""{1}"">", uniqueId, field.Name);
-                var editor = GetEditor(field);
-                //SetProperties(editor, field);
-                //TODO
-                return writer.InnerWriter.ToString();
-            }
-
-            //switch (type)
-            //{
-            //    case "Image":
-            //        return BuildImageControl(uniqueId, key, value);
-            //    case "Single-Line Text":
-            //        return BuildSingleLineControl(uniqueId, key, value);
-            //    default:
-            //        return BuildSingleLineControl(uniqueId, key, value);
-            //}
-            //TODO
-        }
-
-        protected string BuildImageControl(string id, string key, string value)
-        {
-            //TODO
-            return BuildSingleLineControl(id, key, value);
-        }
-
-        protected string BuildSingleLineControl(string id, string key, string value)
-        {
-            using (HtmlTextWriter writer = new HtmlTextWriter(new StringWriter()))
-            {
-                writer.Write(@"<input name=""{0}"" type=""hidden"" value=""{1}"">", id, key);
-                writer.Write(@"<input name=""{0}"" type=""text""{1}{2} style=""width:100%"" value=""{3}"">",
-                    id + "_value",
-                    ReadOnly ? " readonly=\"readonly\"" : string.Empty,
-                    Disabled ? " disabled=\"disabled\"" : string.Empty,
-                    HttpUtility.HtmlAttributeEncode(value));
-                return writer.InnerWriter.ToString();
-            }
-        }
-
-        //protected Dictionary<string, string> GetPropertiesTemplate()
-        //{
-        //    Dictionary<string, string> result = new Dictionary<string, string>();
-        //    result.Add("image", "Image");
-        //    result.Add("title", "Single-Line Text");
-        //    result.Add("blurb", "Single-Line Text");
-
-        //    //Rich Text
-        //    //Multi - Line Text
-        //    //Single - Line Text
-        //    //Image with Cropping
-        //    //Image
-
-        //    //var i = GetItem();
-        //    //i.Template.Fields[0].Type
-        //    //TODO
-        //    return result;
-        //}
 
         private List<Item> _sourceRowTemplate;
         protected List<Item> SourceRowTemplate
@@ -267,30 +176,19 @@ namespace Nova.Sc.Fields.Templated
             output.Write("</div>");
         }
 
-        [UsedImplicitly]
-        protected void AddRow()
+        public Item GetFieldTypeItem(Item field)
         {
-            Sitecore.Context.ClientPage.ClientResponse.Insert(ID + "_add", "beforeBegin", BuildRow(RowCount++, new DataItemProperty[0]));
-            //TODO - insert in diffrent component ID
-            System.Web.UI.Page handler = HttpContext.Current.Handler as System.Web.UI.Page;
-            if (handler != null && handler.Request.Form != null)
-            {
-                Sitecore.Context.ClientPage.ClientResponse.SetReturnValue(true);
-            }
-        }
-
-
-        public System.Web.UI.Control GetEditor(Item field)
-        {
-
             string fieldType = field["Type"];
             if (string.IsNullOrEmpty(fieldType))
             {
                 fieldType = "text";
             }
 
-            var fieldTypeItem = FieldTypeManager.GetFieldTypeItem(fieldType) ?? FieldTypeManager.GetDefaultFieldTypeItem();
+            return FieldTypeManager.GetFieldTypeItem(fieldType) ?? FieldTypeManager.GetDefaultFieldTypeItem();
+        }
 
+        public System.Web.UI.Control GetEditor(Item fieldTypeItem)
+        {
             System.Web.UI.Control control = Resource.GetWebControl(fieldTypeItem["Control"]);
             if (control == null)
             {
@@ -308,9 +206,9 @@ namespace Nova.Sc.Fields.Templated
             return control;
         }
 
-        public void SetProperties(System.Web.UI.Control editor, string id, Item field) //string fieldId, string fieldSource)
+        public void SetProperties(System.Web.UI.Control editor, string editorId, Item field) //string fieldId, string fieldSource)
         {
-            ReflectionUtil.SetProperty(editor, "ID", id); //field.ControlID
+            ReflectionUtil.SetProperty(editor, "ID", editorId); //field.ControlID
             ReflectionUtil.SetProperty(editor, "ItemID", ItemID);
             ReflectionUtil.SetProperty(editor, "ItemVersion", ItemVersion);
             ReflectionUtil.SetProperty(editor, "ItemLanguage", ItemLanguage);
@@ -318,6 +216,60 @@ namespace Nova.Sc.Fields.Templated
             ReflectionUtil.SetProperty(editor, "Source", field["Source"]); //field.ItemField.Source
             ReflectionUtil.SetProperty(editor, "ReadOnly", ReadOnly);
             ReflectionUtil.SetProperty(editor, "Disabled", ReadOnly);
+        }
+
+        public System.Web.UI.Control GetMenuButtons(Item fieldTypeItem, string editorId)
+        {
+            Item menu = fieldTypeItem.Children["Menu"];
+            if (menu != null && menu.HasChildren)
+            {
+                using (HtmlTextWriter writer = new HtmlTextWriter(new StringWriter()))
+                {
+                    writer.Write("<div class=\"scContentButtons\">");
+                    foreach(Item item in menu.Children)
+                    {
+                        if(MainUtil.GetBool(item["Show In Field Editor"], false))
+                        {
+                            writer.Write(string.Format("<a href=\"#\" class=\"scContentButton\" onclick=\"{0}\">",
+                                Sitecore.Context.ClientPage.GetClientEvent(item["Message"]).Replace("$Target", editorId)));
+                            writer.Write(item["Display Name"]);
+                            writer.Write("</a>");
+                        }
+                    }
+                    writer.Write("</div>");
+                    return new LiteralControl(writer.InnerWriter.ToString());
+                }
+            }
+            return new LiteralControl();
+        }
+
+        public void SetValue(System.Web.UI.Control editor, string value)
+        {
+            value = value ?? string.Empty;
+
+            if (editor is IStreamedContentField)
+            {
+                return;
+            }
+            IContentField contentField = editor as IContentField;
+            if (contentField != null)
+            {
+                contentField.SetValue(value);
+                return;
+            }
+            ReflectionUtil.SetProperty(editor, "Value", value);
+        }
+
+        public string GetValue(System.Web.UI.Control editor)
+        {
+            IContentField contentField = editor as IContentField;
+            if (contentField != null)
+            {
+                return contentField.GetValue();
+            }
+
+            object value = ReflectionUtil.GetProperty(editor, "Value");
+            return value == null ? null : value.ToString();
         }
 
         public string Source
