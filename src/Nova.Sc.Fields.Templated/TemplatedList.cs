@@ -19,12 +19,17 @@ using Sitecore.Reflection;
 using Sitecore.Data.Fields;
 using Sitecore.Data.Items;
 using Sitecore.Shell.Framework.Commands;
+using Sitecore.Data.Managers;
+using Nova.Core.Utils;
+using Nova.Sc.Fields.Templated.Table;
 
 namespace Nova.Sc.Fields.Templated
 {
     [UsedImplicitly]
     public class TemplatedList : Input
     {
+        const string NON_DATA_KEY = "non-data";
+
         public TemplatedList()
         {
             Activation = true;
@@ -59,22 +64,21 @@ namespace Nova.Sc.Fields.Templated
             if (!ReadOnly && !Disabled)
             {
                 DataValue valueObject = new DataValue();
-                foreach (Table.Table table in Controls)
+                foreach(var row in Controls.Filter<Table.Table>().SelectMany(t => t.Rows).Where(r => r.Key != NON_DATA_KEY))
                 {
-                    foreach(var row in table.Rows.Where(r => r.Key != "non-data"))
-                    {
-                        DataItem dataItem = new DataItem();
+                    DataItem dataItem = new DataItem();
 
-                        foreach(var cell in row.Cells)
-                        {
-                            dataItem.properties.Add(new DataItemProperty() { key = cell.Key, value = GetCellValue(cell) });
-                        }
-                        valueObject.items.Add(dataItem);
+                    foreach(var cell in row.Cells.Where(c => c.Key != NON_DATA_KEY))
+                    {
+                        dataItem.properties.Add(new DataItemProperty() { key = cell.Key, value = GetCellValue(cell) });
                     }
+                    valueObject.items.Add(dataItem);
                 }
                 //TODO - order
                 valueObject.items = valueObject.items.Where(i => i.properties.Any(p => !string.IsNullOrEmpty(p.value))).ToList();
-                if (Value != valueObject.JsonSerialize())
+                string serializedValue = valueObject.items.Any() ? valueObject.JsonSerialize() : string.Empty;
+
+                if (Value != serializedValue)
                 {
                     ValueObject = valueObject;
                     SetModified();
@@ -98,52 +102,285 @@ namespace Nova.Sc.Fields.Templated
                 return;
             }
 
-            Table.Table table = new Table.Table();
-            Table.Row header = new Table.Row() { Key = "non-data" };
-            Table.Row newRow = new Table.Row();
-            Table.Row newRowMenu = new Table.Row() { Key = "non-data" };
-            table.AddRow(header);
-            foreach(var field in SourceRowTemplate)
+            foreach (var row in ValueObject.items)
+            {
+                Controls.Add(GetDataItemControl(row));
+            }
+            Controls.Add(GetDataItemControl(null));
+        }
+
+        [UsedImplicitly]
+        protected void RowAddUp(string tableId)
+        {
+            var nav = new ObjectNavigation<Table.Table, string>(Controls.Filter<Table.Table>(), tableId, t => t.ID);
+
+            if (nav.Current != null)
+            {
+                Table.Table table = GetDataItemControl(null);
+                Controls.AddAt(Controls.IndexOf(nav.Current), table);
+                Sitecore.Context.ClientPage.ClientResponse.Insert(tableId, "beforeBegin", table);
+            }
+
+            System.Web.UI.Page handler = HttpContext.Current.Handler as System.Web.UI.Page;
+            if (handler != null && handler.Request.Form != null)
+            {
+                Sitecore.Context.ClientPage.ClientResponse.SetReturnValue(true);
+            }
+        }
+
+        [UsedImplicitly]
+        protected void RowAddDown(string tableId)
+        {
+            var nav = new ObjectNavigation<Table.Table, string>(Controls.Filter<Table.Table>(), tableId, t => t.ID);
+
+            if (nav.Current != null)
+            {
+                Table.Table table = GetDataItemControl(null);
+                Controls.AddAt(Controls.IndexOf(nav.Current)+1, table);
+                Sitecore.Context.ClientPage.ClientResponse.Insert(tableId, "afterEnd", table);
+            }
+
+            System.Web.UI.Page handler = HttpContext.Current.Handler as System.Web.UI.Page;
+            if (handler != null && handler.Request.Form != null)
+            {
+                Sitecore.Context.ClientPage.ClientResponse.SetReturnValue(true);
+            }
+        }
+
+
+        [UsedImplicitly]
+        protected void RowUp(string tableId)
+        {
+            var nav = new ObjectNavigation<Table.Table, string>(Controls.Filter<Table.Table>(), tableId, t => t.ID);
+
+            if(nav.Previous != null && nav.Current != null)
+            {
+                SwitchValues(nav.Previous, nav.Current);
+                Sitecore.Context.ClientPage.ClientResponse.Refresh(nav.Previous);
+                Sitecore.Context.ClientPage.ClientResponse.Refresh(nav.Current);
+            }
+
+            System.Web.UI.Page handler = HttpContext.Current.Handler as System.Web.UI.Page;
+            if (handler != null && handler.Request.Form != null)
+            {
+                Sitecore.Context.ClientPage.ClientResponse.SetReturnValue(true);
+            }
+        }
+
+        [UsedImplicitly]
+        protected void RowDown(string tableId)
+        {
+            var nav = new ObjectNavigation<Table.Table, string>(Controls.Filter<Table.Table>(), tableId, t => t.ID);
+
+            if (nav.Next != null && nav.Current != null)
+            {
+                SwitchValues(nav.Next, nav.Current);
+                Sitecore.Context.ClientPage.ClientResponse.Refresh(nav.Next);
+                Sitecore.Context.ClientPage.ClientResponse.Refresh(nav.Current);
+            }
+
+            System.Web.UI.Page handler = HttpContext.Current.Handler as System.Web.UI.Page;
+            if (handler != null && handler.Request.Form != null)
+            {
+                Sitecore.Context.ClientPage.ClientResponse.SetReturnValue(true);
+            }
+        }
+
+        [UsedImplicitly]
+        protected void RowDelete(string tableId)
+        {
+            Table.Table table = Controls.Filter<Table.Table>().FirstOrDefault(t => t.ID == tableId);
+
+            if(table != null)
+            {
+                Controls.Remove(table);
+                Sitecore.Context.ClientPage.ClientResponse.Remove(tableId);
+            }
+
+            System.Web.UI.Page handler = HttpContext.Current.Handler as System.Web.UI.Page;
+            if (handler != null && handler.Request.Form != null)
+            {
+                Sitecore.Context.ClientPage.ClientResponse.SetReturnValue(true);
+            }
+        }
+
+        [UsedImplicitly]
+        protected void RowClear(string tableId)
+        {
+            Table.Table table = Controls.Filter<Table.Table>().FirstOrDefault(t => t.ID == tableId);
+
+            if (table != null)
+            {
+                Table.Table defaultTable = GetDataItemControl(null);
+                CopyValues(defaultTable, table);
+                Sitecore.Context.ClientPage.ClientResponse.Refresh(table);
+            }
+
+            System.Web.UI.Page handler = HttpContext.Current.Handler as System.Web.UI.Page;
+            if (handler != null && handler.Request.Form != null)
+            {
+                Sitecore.Context.ClientPage.ClientResponse.SetReturnValue(true);
+            }
+        }
+
+        [UsedImplicitly]
+        protected void RowClone(string tableId)
+        {
+            var nav = new ObjectNavigation<Table.Table, string>(Controls.Filter<Table.Table>(), tableId, t => t.ID);
+
+            if (nav.Current != null)
+            {
+                Table.Table table = GetDataItemControl(null);
+                CopyValues(nav.Current, table);
+                Controls.AddAt(Controls.IndexOf(nav.Current) + 1, table);
+                Sitecore.Context.ClientPage.ClientResponse.Insert(tableId, "afterEnd", table);
+            }
+
+            System.Web.UI.Page handler = HttpContext.Current.Handler as System.Web.UI.Page;
+            if (handler != null && handler.Request.Form != null)
+            {
+                Sitecore.Context.ClientPage.ClientResponse.SetReturnValue(true);
+            }
+        }
+
+        [UsedImplicitly]
+        protected void RowFirst(string tableId)
+        {
+            var nav = new ObjectNavigation<Table.Table, string>(Controls.Filter<Table.Table>(), tableId, t => t.ID);
+
+            if(nav.Current != null && nav.Current != nav.First)
+            {
+                Controls.Remove(nav.Current);
+                Controls.AddAt(0, nav.Current);
+                Sitecore.Context.ClientPage.ClientResponse.Remove(tableId);
+                Sitecore.Context.ClientPage.ClientResponse.Insert(nav.First.ID, "beforeBegin", nav.Current);
+            }
+
+            System.Web.UI.Page handler = HttpContext.Current.Handler as System.Web.UI.Page;
+            if (handler != null && handler.Request.Form != null)
+            {
+                Sitecore.Context.ClientPage.ClientResponse.SetReturnValue(true);
+            }
+        }
+
+        [UsedImplicitly]
+        protected void RowLast(string tableId)
+        {
+            var nav = new ObjectNavigation<Table.Table, string>(Controls.Filter<Table.Table>(), tableId, t => t.ID);
+
+            if (nav.Current != null && nav.Current != nav.Last)
+            {
+                Controls.Remove(nav.Current);
+                Controls.Add(nav.Current);
+                Sitecore.Context.ClientPage.ClientResponse.Remove(tableId);
+                Sitecore.Context.ClientPage.ClientResponse.Insert(nav.Last.ID, "afterEnd", nav.Current);
+            }
+
+            System.Web.UI.Page handler = HttpContext.Current.Handler as System.Web.UI.Page;
+            if (handler != null && handler.Request.Form != null)
+            {
+                Sitecore.Context.ClientPage.ClientResponse.SetReturnValue(true);
+            }
+        }
+
+        protected void SwitchValues(Table.Table source, Table.Table target)
+        {
+            var sourceCells = source.Rows.Where(r => r.Key != NON_DATA_KEY).SelectMany(r => r.Cells).Where(c => c.Key != NON_DATA_KEY).ToArray();
+            var targetCells = target.Rows.Where(r => r.Key != NON_DATA_KEY).SelectMany(r => r.Cells).Where(c => c.Key != NON_DATA_KEY).ToArray();
+            for(int i = 0; i<sourceCells.Length; i++)
+            {
+                var sourceValue = GetCellValue(sourceCells[i]);
+                var targetValue = GetCellValue(targetCells[i]);
+
+                SetValue(sourceCells[i], targetValue);
+                SetValue(targetCells[i], sourceValue);
+            }
+        }
+
+        protected void CopyValues(Table.Table source, Table.Table target)
+        {
+            var sourceCells = source.Rows.Where(r => r.Key != NON_DATA_KEY).SelectMany(r => r.Cells).Where(c => c.Key != NON_DATA_KEY).ToArray();
+            var targetCells = target.Rows.Where(r => r.Key != NON_DATA_KEY).SelectMany(r => r.Cells).Where(c => c.Key != NON_DATA_KEY).ToArray();
+            for (int i = 0; i < sourceCells.Length; i++)
+            {
+                var sourceValue = GetCellValue(sourceCells[i]);
+                SetValue(targetCells[i], sourceValue);
+            }
+        }
+
+        protected Table.Table GetDataItemControl(DataItem dataItem)
+        {
+            Table.Table result = new Table.Table() { ID = GetUniqueID(ID) };
+
+            Table.Row headerRow = new Table.Row() { Key = NON_DATA_KEY };
+            Table.Row menuRow = new Table.Row() { Key = NON_DATA_KEY };
+            Table.Row tableRow = new Table.Row();
+
+            headerRow.AddCell(new Table.Cell());
+            menuRow.AddCell(new Table.Cell());
+            tableRow.AddCell(GetNavigationCell(result.ID));
+
+            foreach (var field in SourceRowTemplate)
             {
                 string editorId = GetUniqueID(ID);
                 Item fieldItemType = GetFieldTypeItem(field);
 
-                header.AddCell(new Table.Cell(new LiteralControl(HttpUtility.HtmlEncode(field.DisplayName ?? field.Name)), "header"));
+                headerRow.AddCell(new Table.Cell(new LiteralWithViewState(HttpUtility.HtmlEncode(field.DisplayName ?? field.Name)), NON_DATA_KEY));
+                menuRow.AddCell(new Table.Cell(GetMenuButtons(fieldItemType, editorId), NON_DATA_KEY));
+
 
                 System.Web.UI.Control editor = GetEditor(fieldItemType);
                 SetProperties(editor, editorId, field);
                 //TODO - Sitecore.Shell.Applications.ContentEditor.EditorFormatter.SetAttributes
                 //TODO - Sitecore.Shell.Applications.ContentEditor.EditorFormatter.SetStyle
-                
-                newRow.AddCell(new Table.Cell(editor, field.Name));
-                newRowMenu.AddCell(new Table.Cell(GetMenuButtons(fieldItemType, editorId), "non-data"));
-            }
-
-            foreach (var row in ValueObject.items)
-            {
-                Table.Row tableRow = new Table.Row();
-                Table.Row menuRow = new Table.Row() { Key = "non-data" };
-                foreach (var field in SourceRowTemplate)
+                if (dataItem != null)
                 {
-                    string editorId = GetUniqueID(ID);
-                    Item fieldItemType = GetFieldTypeItem(field);
-                    System.Web.UI.Control editor = GetEditor(fieldItemType);
-                    SetProperties(editor, editorId, field);
-                    //TODO - Sitecore.Shell.Applications.ContentEditor.EditorFormatter.SetAttributes
-                    //TODO - Sitecore.Shell.Applications.ContentEditor.EditorFormatter.SetStyle
-                    SetValue(editor, row.properties.Where(p => p.key == field.Name).Select(p => p.value).FirstOrDefault());
-                    tableRow.AddCell(new Table.Cell(editor, field.Name));
-
-                    menuRow.AddCell(new Table.Cell(GetMenuButtons(fieldItemType, editorId), "non-data"));
+                    SetValue(editor, dataItem.properties.Where(p => p.key == field.Name).Select(p => p.value).FirstOrDefault());
                 }
-
-                table.AddRow(menuRow);
-                table.AddRow(tableRow);
+                tableRow.AddCell(new Table.Cell(editor, field.Name));
             }
 
-            table.AddRow(newRowMenu);
-            table.AddRow(newRow);
-            Controls.Add(table);
+            result.AddRow(headerRow);
+            result.AddRow(menuRow);
+            result.AddRow(tableRow);
+
+            return result;
+        }
+
+        protected Table.Cell GetNavigationCell(string tableId)
+        {
+            string firstClientEvent = Sitecore.Context.ClientPage.GetClientEvent(string.Format("{0}.RowFirst(\"{1}\")", ID, tableId));
+            string upClientEvent = Sitecore.Context.ClientPage.GetClientEvent(string.Format("{0}.RowUp(\"{1}\")", ID, tableId));
+            string addUpClientEvent = Sitecore.Context.ClientPage.GetClientEvent(string.Format("{0}.RowAddUp(\"{1}\")", ID, tableId));
+
+            string deleteClientEvent = Sitecore.Context.ClientPage.GetClientEvent(string.Format("{0}.RowDelete(\"{1}\")", ID, tableId));
+            string clearClientEvent = Sitecore.Context.ClientPage.GetClientEvent(string.Format("{0}.RowClear(\"{1}\")", ID, tableId));
+            string cloneClientEvent = Sitecore.Context.ClientPage.GetClientEvent(string.Format("{0}.RowClone(\"{1}\")", ID, tableId));
+
+            string lastClientEvent = Sitecore.Context.ClientPage.GetClientEvent(string.Format("{0}.RowLast(\"{1}\")", ID, tableId));
+            string downClientEvent = Sitecore.Context.ClientPage.GetClientEvent(string.Format("{0}.RowDown(\"{1}\")", ID, tableId));
+            string addDownClientEvent = Sitecore.Context.ClientPage.GetClientEvent(string.Format("{0}.RowAddDown(\"{1}\")", ID, tableId));
+
+            var sb = new StringBuilder();
+            sb.AppendFormat(@"<div id=""{0}"" class=""tlNavigation"">", tableId + "_nav");
+            sb.AppendLine("<div>");
+            sb.AppendFormat(@"<span onclick=""{0}"" id=""{1}"" class=""tlFirst"">{2}</span>", firstClientEvent, tableId + "_first", ThemeManager.GetImage("office/16x16/navigate_up2.png", 16, 16));
+            sb.AppendFormat(@"<span onclick=""{0}"" id=""{1}"" class=""tlUp"">{2}</span>", upClientEvent, tableId + "_up", ThemeManager.GetImage("office/16x16/navigate_up.png", 16, 16));
+            sb.AppendFormat(@"<span onclick=""{0}"" id=""{1}"" class=""tlAddUp"">{2}</span>", addUpClientEvent, tableId + "_addUp", ThemeManager.GetImage("office/16x16/navigate_plus.png", 16, 16));
+            sb.AppendLine(" </div>");
+            sb.AppendLine("<div>");
+            sb.AppendFormat(@"<span onclick=""{0}"" id=""{1}"" class=""tlDelete"">{2}</span>", deleteClientEvent, tableId + "_delete", ThemeManager.GetImage("office/16x16/delete.png", 16, 16));
+            sb.AppendFormat(@"<span onclick=""{0}"" id=""{1}"" class=""tlClear"">{2}</span>", clearClientEvent, tableId + "_clear", ThemeManager.GetImage("office/16x16/selection.png", 16, 16));
+            sb.AppendFormat(@"<span onclick=""{0}"" id=""{1}"" class=""tlClone"">{2}</span>", cloneClientEvent, tableId + "_clone", ThemeManager.GetImage("office/16x16/arrow_fork.png", 16, 16));
+            sb.AppendLine(" </div>");
+            sb.AppendLine("<div>");
+            sb.AppendFormat(@"<span onclick=""{0}"" id=""{1}"" class=""tlLast"">{2}</span>", lastClientEvent, tableId + "_last", ThemeManager.GetImage("office/16x16/navigate_down2.png", 16, 16));
+            sb.AppendFormat(@"<span onclick=""{0}"" id=""{1}"" class=""tlDown"">{2}</span>", downClientEvent, tableId + "_down", ThemeManager.GetImage("office/16x16/navigate_down.png", 16, 16));
+            sb.AppendFormat(@"<span onclick=""{0}"" id=""{1}"" class=""tlAddDown"">{2}</span>", addDownClientEvent, tableId + "_addDown", ThemeManager.GetImage("office/16x16/navigate_plus.png", 16, 16));
+            sb.AppendLine(" </div>");
+            sb.AppendLine(" </div>");
+
+            return new Table.Cell(new LiteralWithViewState(sb.ToString()), NON_DATA_KEY) { CssClass = "tlNavigation" };
         }
 
         private List<Item> _sourceRowTemplate;
@@ -237,14 +474,19 @@ namespace Nova.Sc.Fields.Templated
                         }
                     }
                     writer.Write("</div>");
-                    return new LiteralControl(writer.InnerWriter.ToString());
+                    return new LiteralWithViewState(writer.InnerWriter.ToString());
                 }
             }
-            return new LiteralControl();
+            return new LiteralWithViewState();
         }
 
         public void SetValue(System.Web.UI.Control editor, string value)
         {
+            if(editor as Table.Cell != null)
+            {
+                editor = editor.Controls.Filter<System.Web.UI.Control>().FirstOrDefault() ?? editor;
+            }
+
             value = value ?? string.Empty;
 
             if (editor is IStreamedContentField)
@@ -347,7 +589,7 @@ namespace Nova.Sc.Fields.Templated
             set
             {
                 _valueObject = value;
-                Value = _valueObject.JsonSerialize();
+                Value = _valueObject.items.Any() ? _valueObject.JsonSerialize() : string.Empty;
             }
         }
 

@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Nova.Core;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -28,6 +29,20 @@ namespace Nova.Sc.Fields.Templated.Table
             }
         }
 
+        public string CssClass
+        {
+            get
+            {
+                this.TrackViewState();
+                return this.ViewState["CssClass"] as string;
+            }
+            set
+            {
+                this.TrackViewState();
+                this.ViewState["CssClass"] = value;
+            }
+        }
+
         public Row(IEnumerable<Cell> cells)
         {
             foreach (var cell in cells)
@@ -38,7 +53,7 @@ namespace Nova.Sc.Fields.Templated.Table
 
         protected override void RenderChildren(HtmlTextWriter writer)
         {
-            writer.Write("<tr>");
+            writer.Write("<tr" + (string.IsNullOrEmpty(CssClass) ? "" : (" class=\"" + CssClass + "\"")) + ">");
             base.RenderChildren(writer);
             writer.Write("</tr>");
         }
@@ -52,10 +67,7 @@ namespace Nova.Sc.Fields.Templated.Table
         {
             get
             {
-                foreach (Cell c in Controls)
-                {
-                    yield return c;
-                }
+                return Controls.Filter<Cell>();
             }
         }
     }

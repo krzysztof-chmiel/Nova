@@ -5,7 +5,7 @@ using System.Linq;
 using System.Runtime.Serialization.Json;
 using System.Text;
 using System.Threading.Tasks;
-
+using System.Web.UI;
 
 namespace Nova.Core
 {
@@ -38,6 +38,17 @@ namespace Nova.Core
             {
                 DataContractJsonSerializer ser = new DataContractJsonSerializer(typeof(T));
                 return ser.ReadObject(ms) as T;
+            }
+        }
+
+        public static IEnumerable<T> Filter<T>(this ControlCollection collection) where T:Control
+        {
+            foreach (Control r in collection)
+            {
+                if (r as T != null)
+                {
+                    yield return r as T;
+                }
             }
         }
     }

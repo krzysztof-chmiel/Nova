@@ -34,9 +34,23 @@ namespace Nova.Sc.Fields.Templated.Table
             }
         }
 
+        public string CssClass
+        {
+            get
+            {
+                this.TrackViewState();
+                return this.ViewState["CssClass"] as string;
+            }
+            set
+            {
+                this.TrackViewState();
+                this.ViewState["CssClass"] = value;
+            }
+        }
+
         protected override void RenderChildren(HtmlTextWriter writer)
         {
-            writer.Write("<td>");
+            writer.Write("<td" + (string.IsNullOrEmpty(CssClass) ? "" : (" class=\"" + CssClass + "\"")) + ">");
             base.RenderChildren(writer);
             writer.Write("</td>");
         }
