@@ -5,7 +5,7 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Web.UI;
 
-namespace Nova.Sc.Fields.Templated.Table
+namespace Nova.Web.UI
 {
     public class LiteralWithViewState : Control
     {

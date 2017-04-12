@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 using System.Web.UI;
 using Nova.Core;
 
-namespace Nova.Sc.Fields.Templated.Table
+namespace Nova.Web.UI
 {
     public class Table : Control
     {
@@ -20,6 +20,28 @@ namespace Nova.Sc.Fields.Templated.Table
             foreach(var row in rows)
             {
                 Controls.Add(row);
+            }
+        }
+
+        public string CssClass
+        {
+            get
+            {
+                this.TrackViewState();
+                return this.ViewState["CssClass"] as string;
+            }
+            set
+            {
+                this.TrackViewState();
+                this.ViewState["CssClass"] = value;
+            }
+        }
+
+        public IEnumerable<Row> Rows
+        {
+            get
+            {
+                return Controls.Filter<Row>();
             }
         }
 
@@ -42,28 +64,6 @@ namespace Nova.Sc.Fields.Templated.Table
             foreach (var row in rows)
             {
                 Controls.Add(row);
-            }
-        }
-
-        public IEnumerable<Row> Rows
-        {
-            get
-            {
-                return Controls.Filter<Row>();
-            }
-        }
-
-        public string CssClass
-        {
-            get
-            {
-                this.TrackViewState();
-                return this.ViewState["CssClass"] as string;
-            }
-            set
-            {
-                this.TrackViewState();
-                this.ViewState["CssClass"] = value;
             }
         }
     }

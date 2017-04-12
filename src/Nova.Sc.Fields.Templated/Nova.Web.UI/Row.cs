@@ -6,7 +6,7 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Web.UI;
 
-namespace Nova.Sc.Fields.Templated.Table
+namespace Nova.Web.UI
 {
     public class Row : Control
     {
@@ -43,6 +43,14 @@ namespace Nova.Sc.Fields.Templated.Table
             }
         }
 
+        public IEnumerable<Cell> Cells
+        {
+            get
+            {
+                return Controls.Filter<Cell>();
+            }
+        }
+
         public Row(IEnumerable<Cell> cells)
         {
             foreach (var cell in cells)
@@ -61,14 +69,6 @@ namespace Nova.Sc.Fields.Templated.Table
         public void AddCell(Cell cell)
         {
             Controls.Add(cell);
-        }
-
-        public IEnumerable<Cell> Cells
-        {
-            get
-            {
-                return Controls.Filter<Cell>();
-            }
         }
     }
 }

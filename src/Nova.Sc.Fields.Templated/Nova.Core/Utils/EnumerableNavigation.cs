@@ -6,9 +6,9 @@ using System.Threading.Tasks;
 
 namespace Nova.Core.Utils
 {
-    public class ObjectNavigation<T,K>
+    public class EnumerableNavigation<T,K>
     {
-        public ObjectNavigation(IEnumerable<T> items, K key, Func<T,K> keySelector)
+        public EnumerableNavigation(IEnumerable<T> items, K key, Func<T,K> keySelector)
         {
             if(items != null && items.Any() && keySelector != null)
             {

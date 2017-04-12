@@ -45,22 +45,18 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Table\Cell.cs" />
-    <Compile Include="Table\LiteralWithViewState.cs" />
-    <Compile Include="Table\Row.cs" />
-    <Compile Include="Table\Table.cs" />
+    <Compile Include="Nova.Core\Extensions.cs" />
+    <Compile Include="Nova.Core\Utils\EnumerableNavigation.cs" />
+    <Compile Include="Nova.Web.UI\Cell.cs" />
+    <Compile Include="Nova.Web.UI\LiteralWithViewState.cs" />
+    <Compile Include="Nova.Web.UI\Row.cs" />
+    <Compile Include="Nova.Web.UI\Table.cs" />
+    <Compile Include="SitecoreReflected.cs" />
     <Compile Include="TemplatedList.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
-  </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="..\Nova.Core\Nova.Core.csproj">
-      <Project>{c35ab20d-f1cb-4b04-b4cb-cc06fe43f719}</Project>
-      <Name>Nova.Core</Name>
-    </ProjectReference>
-    <ProjectReference Include="..\Nova.Sc\Nova.Sc.csproj">
-      <Project>{6b304f23-afb8-43b0-9b91-240859965aa0}</Project>
-      <Name>Nova.Sc</Name>
-    </ProjectReference>
+    <Compile Include="Value\Item.cs" />
+    <Compile Include="Value\List.cs" />
+    <Compile Include="Value\Property.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="App_Config\Include\Nova\Nova.Sc.Fields.Templated.config" />
